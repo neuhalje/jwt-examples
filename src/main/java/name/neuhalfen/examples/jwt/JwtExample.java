@@ -7,6 +7,7 @@ import com.nimbusds.jose.crypto.DirectEncrypter;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.PlainJWT;
 import com.nimbusds.jwt.SignedJWT;
 
 import javax.crypto.spec.SecretKeySpec;
@@ -75,7 +76,7 @@ public class JwtExample {
     }
 
     /**
-     * This is an  encrypted, integrity protected JWT token.
+     * This is an integrity protected JWT token inside an encrypted, integrity protected JWE
      */
     public String createEncryptedJWTFromSharedSecret(final byte[] sharedSecret,
                                                      final String kid,
@@ -87,6 +88,23 @@ public class JwtExample {
         final String jwt = createJWT(jwtKey, kid, subject, issuer, audience, expirationTime);
 
         //
+        byte[] jweKey = deriveJweKey(sharedSecret);
+
+        return createJWE(jweKey, kid, jwt);
+    }
+
+    /**
+     * This is an *unprotected* JWT token inside an encrypted, integrity protected JWE
+     */
+    public String createEncryptedJWTFromSharedSecretUnsignedJWT(final byte[] sharedSecret,
+                                                     final String kid,
+                                                     final String subject,
+                                                     final String issuer,
+                                                     final String audience,
+                                                     final Date expirationTime) throws JOSEException, NoSuchAlgorithmException {
+        final String jwt = createUnsignedJWT(subject, issuer, audience, expirationTime);
+
+        // Always use HKDF on key material
         byte[] jweKey = deriveJweKey(sharedSecret);
 
         return createJWE(jweKey, kid, jwt);
@@ -142,6 +160,23 @@ public class JwtExample {
         return signedJWT.serialize();
     }
 
+    private String createUnsignedJWT(final String subject,
+                             final String issuer,
+                             final String audience,
+                             final Date expirationTime)  {
+
+        final JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
+                .subject(subject)
+                .issuer(issuer)
+                .expirationTime(expirationTime)
+                .audience(audience)
+                .build();
+
+
+         return new PlainJWT( claimsSet).serialize();
+    }
+
+
     public static void main(String[] args) throws JOSEException, NoSuchAlgorithmException, ParseException {
         final Date expirationDate = new Date(new Date().getTime() + 60 * 1000);
 
@@ -157,22 +192,28 @@ public class JwtExample {
 
         // jwt: not encrypted
         final String jwt = sut.createJWTFromSharedSecret(sharedSecret, "1", "John Doe", "ACME Corp/demo-case/TEST", "ACME Corp/demo-audience/TEST", expirationDate);
-        System.out.println("Signed JWT (len: " + jwt.length() + ")   : " + jwt);
+        System.out.println("Signed JWT      | Signed JWT (len: " + jwt.length() + ")   : " + jwt);
 
         // jwe: encrypted
         final String jwe = sut.createEncryptedJWTFromSharedSecret(sharedSecret, "1", "John Doe", "ACME Corp/demo-case/TEST", "ACME Corp/demo-audience/TEST", expirationDate);
-        System.out.println("Signed & Enc JWT (len: " + jwe.length() + "): " + jwe);
+        System.out.println("Signed JWT      | Signed & Enc JWT (len: " + jwe.length() + "; "+ (jwe.length()-jwt.length()) +" bytes overhead): " + jwe);
 
         // and back again
         final String jwtFromJwe = sut.parseJwe(sharedSecret,"1", jwe);
 
         SignedJWT parsedJwt = sut.parseJWT(sharedSecret, "1", jwtFromJwe);
-        System.out.println("Parsed JWT: " + parsedJwt.getParsedString());
+        System.out.println("Signed JWT      | Parsed JWT: " + parsedJwt.getParsedString());
 
-        System.out.println("Parsed JWT: Hello, " + parsedJwt.getJWTClaimsSet().getSubject());
+        System.out.println("Signed JWT      | Parsed JWT: Hello, " + parsedJwt.getJWTClaimsSet().getSubject());
 
         assert parsedJwt.getJWTClaimsSet().getSubject().equals("John Doe");
 
+        // This is NOT recommended
+        final String unsignedJwt = sut.createUnsignedJWT( "John Doe", "ACME Corp/demo-case/TEST", "ACME Corp/demo-audience/TEST", expirationDate);
+        System.out.println("Unsigned JWT    | Unsigned JWT (len: " + unsignedJwt.length() + "  : " + unsignedJwt);
+
+        final String jweFromUnsignedJWT = sut.createEncryptedJWTFromSharedSecretUnsignedJWT(sharedSecret, "1", "John Doe", "ACME Corp/demo-case/TEST", "ACME Corp/demo-audience/TEST", expirationDate);
+        System.out.println("Unsigned JWT    | Signed & Enc JWT (len: " + jweFromUnsignedJWT.length() + "; "+ (jweFromUnsignedJWT.length()-unsignedJwt.length()) +" bytes overhead): " + jweFromUnsignedJWT);
 
     }
 
