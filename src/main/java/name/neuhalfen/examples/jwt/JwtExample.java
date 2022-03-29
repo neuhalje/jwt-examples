@@ -18,6 +18,9 @@ import java.text.ParseException;
 import java.util.Arrays;
 import java.util.Date;
 
+/**
+ * This class is a more or less random collection. Use at your own risk!!!
+ */
 public class JwtExample {
     public static byte[] generateSharedSecret() {
         // Generate random 256-bit (32-byte) shared secret
@@ -40,6 +43,8 @@ public class JwtExample {
         final SignedJWT signedJWT = SignedJWT.parse(jwt);
         // in a real world this would be: parse; get key Id; get key(keyID)
         assert keyId.equals(signedJWT.getHeader().getKeyID());
+        // Protect agains token with "none" integrity
+        assert JWSAlgorithm.HS256.equals(signedJWT.getHeader().getAlgorithm());
 
         final JWSVerifier verifier = new MACVerifier(jwtKey);
 
@@ -131,6 +136,8 @@ public class JwtExample {
         final byte[] jweKey = deriveJweKey(sharedSecret);
         // Real world: parse;getKeyId; getKey(keyId)
         assert kid.equals(jweObject.getHeader().getKeyID());
+        assert JWEAlgorithm.A128GCMKW.equals(jweObject.getHeader().getAlgorithm());
+
         jweObject.decrypt(new DirectDecrypter(jweKey));
 
         return jweObject.getPayload().toString();
